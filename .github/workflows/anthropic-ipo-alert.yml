@@ -31,7 +31,7 @@ jobs:
       - name: Check EDGAR and quotes
         id: check
         env:
-          SEC_USER_AGENT: "ipo-alert ${{ github.repository_owner }}@users.noreply.github.com"
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: python scripts/anthropic_ipo_alert.py --state .ipo-state.json > events.jsonl
 

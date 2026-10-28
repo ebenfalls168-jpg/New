@@ -6,8 +6,10 @@ them in a state file so each one is reported once.
 
     python scripts/anthropic_ipo_alert.py --state .ipo-state.json
 
-Env: SEC_USER_AGENT (SEC requires a contact, e.g. "Name you@example.com"),
-     ANTHROPIC_CIK (skip the lookup), TICKER (default ANT), NTFY_TOPIC (optional phone push).
+Env: SEC_USER_AGENT  enables the EDGAR checks; SEC requires a declared tool name
+                     and contact, e.g. "IPO alert you@example.com". Unset = skip EDGAR.
+     ANTHROPIC_CIK   skip the CIK lookup
+     NTFY_TOPIC      optional phone push via ntfy.sh
 """
 import argparse
 import json
@@ -17,8 +19,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-UA = os.environ.get("SEC_USER_AGENT", "ipo-alert github-actions@example.com")
-TICKER = os.environ.get("TICKER", "ANT")
+UA = os.environ.get("SEC_USER_AGENT", "")
+YAHOO = "https://query1.finance.yahoo.com"
 
 # EDGAR form type -> what it means for the IPO
 STAGES = {
@@ -65,20 +67,21 @@ def edgar_events(cik):
 
 
 def trading_event():
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{TICKER}?range=5d&interval=1d"
-    try:
-        meta = get_json(url, ua="Mozilla/5.0")["chart"]["result"][0]["meta"]
-    except RuntimeError as e:
-        if "HTTP 404" in str(e):  # ticker not listed yet
-            return None
-        raise
-    name = (meta.get("longName") or meta.get("shortName") or "").lower()
-    if "anthropic" in name and meta.get("regularMarketPrice"):
-        return {
-            "id": f"trading:{TICKER}",
-            "title": f"Anthropic is TRADING as {TICKER}: ${meta['regularMarketPrice']:.2f}",
-            "url": f"https://finance.yahoo.com/quote/{TICKER}",
-        }
+    """Any listed equity named Anthropic with a live price, whatever its ticker."""
+    q = urllib.parse.urlencode({"q": "Anthropic", "quotesCount": 10, "newsCount": 0})
+    quotes = get_json(f"{YAHOO}/v1/finance/search?{q}", ua="ipo-alert")["quotes"]
+    for quote in quotes:
+        name = (quote.get("longname") or quote.get("shortname") or "").lower()
+        if quote.get("quoteType") != "EQUITY" or not name.startswith("anthropic"):
+            continue
+        sym = quote["symbol"]
+        meta = get_json(f"{YAHOO}/v8/finance/chart/{sym}?range=5d&interval=1d", ua="ipo-alert")["chart"]["result"][0]["meta"]
+        if meta.get("regularMarketPrice"):
+            return {
+                "id": f"trading:{sym}",
+                "title": f"Anthropic is TRADING as {sym} on {quote.get('exchDisp', quote.get('exchange'))}: ${meta['regularMarketPrice']:.2f}",
+                "url": f"https://finance.yahoo.com/quote/{sym}",
+            }
     return None
 
 
@@ -103,13 +106,17 @@ def main():
         seen = set(json.load(open(args.state)))
     first_run = not seen
 
-    events, edgar_ok = [], True
+    events, edgar_ok, quote_ok = [], True, True
     try:
+        if not UA:
+            raise LookupError("SEC_USER_AGENT not set, skipping EDGAR")
         cik = find_cik()
         if cik:
             events += edgar_events(cik)
         else:
             print("warning: Anthropic not found on EDGAR yet", file=sys.stderr)
+    except LookupError as e:
+        print(f"notice: {e}", file=sys.stderr)
     except Exception as e:
         print(f"error: EDGAR check failed: {e}", file=sys.stderr)
         edgar_ok = False
@@ -117,7 +124,8 @@ def main():
         if ev := trading_event():
             events.append(ev)
     except Exception as e:
-        print(f"warning: quote check failed: {e}", file=sys.stderr)
+        print(f"error: quote check failed: {e}", file=sys.stderr)
+        quote_ok = False
 
     for ev in events:
         if ev["id"] in seen:
@@ -132,8 +140,8 @@ def main():
 
     with open(args.state, "w") as f:
         json.dump(sorted(seen), f, indent=1)
-    # Fail the run so a broken EDGAR check is noticed instead of going quiet.
-    if not edgar_ok:
+    # Fail the run so a broken check is noticed instead of going quiet.
+    if not (edgar_ok and quote_ok):
         sys.exit(1)
 
 
