@@ -51,7 +51,7 @@ jobs:
           while read -r ev; do
             title=$(jq -r .title <<<"$ev")
             gh issue create --title "$title" --label price-alert \
-              --assignee "${{ github.repository_owner }}" --body "$(jq -r .body <<<"$ev")"
+              --assignee "${{ github.repository_owner }}" --body "@${{ github.repository_owner }} $(jq -r .body <<<"$ev")"
             if [ -n "$NTFY_TOPIC" ]; then
               curl -sS -H "Title: Price alert" -H "Priority: high" -d "$title" "https://ntfy.sh/$NTFY_TOPIC" >/dev/null
             fi

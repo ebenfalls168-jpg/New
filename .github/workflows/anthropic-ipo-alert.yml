@@ -45,7 +45,7 @@ jobs:
             title=$(jq -r .title <<<"$ev")
             url=$(jq -r .url <<<"$ev")
             gh issue create --title "$title" --label ipo-alert \
-              --assignee "${{ github.repository_owner }}" --body "$url"
+              --assignee "${{ github.repository_owner }}" --body "@${{ github.repository_owner }} $(jq -r .url <<<"$ev")"
           done < events.jsonl
 
       - name: Email alerts
