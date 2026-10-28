@@ -1,0 +1,50 @@
+name: Price alert
+
+on:
+  schedule:
+    # Every 15 minutes, 13:00-21:59 UTC on weekdays (covers US market hours).
+    - cron: "*/15 13-21 * * 1-5"
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/price_alert.py
+      - .github/workflows/price-alert.yml
+
+permissions:
+  issues: write
+
+concurrency: price-alert
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: .price-state.json
+          key: price-state-${{ github.run_id }}
+          restore-keys: price-state-
+
+      # One line per alert: ticker, level, note.
+      - name: Check prices
+        run: |
+          python scripts/price_alert.py SPCX 108 --state .price-state.json \
+            --note "20% below the \$135 IPO price." >> events.jsonl
+
+      - name: Open an issue per alert
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          gh label create price-alert --color FBCA04 --force >/dev/null
+          while read -r ev; do
+            title=$(jq -r .title <<<"$ev")
+            gh issue create --title "$title" --label price-alert \
+              --assignee "${{ github.repository_owner }}" --body "$(jq -r .body <<<"$ev")"
+            if [ -n "$NTFY_TOPIC" ]; then
+              curl -sS -H "Title: Price alert" -H "Priority: high" -d "$title" "https://ntfy.sh/$NTFY_TOPIC" >/dev/null
+            fi
+          done < events.jsonl

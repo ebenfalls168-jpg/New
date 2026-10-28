@@ -20,3 +20,10 @@ A failed run means a check broke; GitHub emails you about failed scheduled runs.
 `python scripts/spacex_streaks.py` (or the "SpaceX streak analysis" workflow) fetches SPCX
 daily prices since the 12 Jun 2026 IPO and reports next-day odds after up/down streaks,
 the swing lows, and whether "buy after N down days" would have caught them.
+
+## Price alerts
+`.github/workflows/price-alert.yml` checks every 15 minutes during US market hours and opens a
+GitHub issue (plus an ntfy push if `NTFY_TOPIC` is set) when a stock's day low reaches a level.
+It fires once per crossing and re-arms after the price recovers 5% above the level.
+Current alert: SPCX at $108 (20% below the $135 IPO price). Add more by adding lines to
+the "Check prices" step.
