@@ -5,6 +5,7 @@ For each IPO, within its first year of trading (default 252 trading days):
   - the peak before the trough
   - the trough: lowest low, which trading day it came on, and how far it was
     below the offer price, the first-day close and the earlier peak
+  - where it trades now vs the offer price and the first-day close
 
     python scripts/ipo_troughs.py [--days 252]
 """
@@ -56,9 +57,12 @@ def analyse(ticker, first_day, offer, days):
     df = yf.download(ticker, start=first_day, auto_adjust=False, progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    df = df[["High", "Low", "Close"]].dropna().head(days)
+    df = df[["High", "Low", "Close"]].dropna()
     if df.empty:
         return None
+    last = df["Close"].iloc[-1]
+    last_date = df.index[-1].date().isoformat()
+    df = df.head(days)
     offer /= split_factor(ticker, first_day)
     lo_i = int(df["Low"].values.argmin())
     pre = df.iloc[: lo_i + 1]
@@ -80,6 +84,10 @@ def analyse(ticker, first_day, offer, days):
         "below offer": trough < offer,
         # Trough on the last day(s) of the window: still falling, so the true low came later.
         "still falling": lo_i >= len(df) - 5,
+        "latest close": last,
+        "latest date": last_date,
+        "now vs offer %": 100 * (last / offer - 1),
+        "now vs day-1 close %": 100 * (last / first_close - 1),
     }
 
 
@@ -106,6 +114,11 @@ def main():
         p(f"- Fell below the offer price: {int(d['below offer'].sum())} of {len(d)}")
         p(f"- Still falling at the end of the window: {int(d['still falling'].sum())} of {len(d)}")
         p(f"- Peak day: median {d['peak day'].median():.0f}")
+    p("\n## Where are they now?\n")
+    now = df[["ticker", "ipo", "latest date", "latest close", "now vs offer %", "now vs day-1 close %"]]
+    p(now.sort_values("now vs offer %", ascending=False).round(1).to_markdown(index=False))
+    p(f"\n- Above the offer price now: {int((df['now vs offer %'] > 0).sum())} of {len(df)}")
+    p(f"- Above the first-day close now: {int((df['now vs day-1 close %'] > 0).sum())} of {len(df)}")
     bins = [0, 21, 63, 126, 189, args.days]
     labels = ["month 1", "months 2-3", "months 4-6", "months 7-9", "months 10-12"]
     p(f"\n## When did the trough come? (full-year IPOs)\n")
