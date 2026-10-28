@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+  push:
+    paths:
+      - scripts/anthropic_ipo_alert.py
+      - .github/workflows/anthropic-ipo-alert.yml
 
 permissions:
   issues: write
