@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -32,8 +33,11 @@ STAGES = {
 
 def get_json(url, ua=UA):
     req = urllib.request.Request(url, headers={"User-Agent": ua, "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code} from {url}") from e
 
 
 def find_cik():
@@ -62,7 +66,12 @@ def edgar_events(cik):
 
 def trading_event():
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{TICKER}?range=5d&interval=1d"
-    meta = get_json(url, ua="Mozilla/5.0")["chart"]["result"][0]["meta"]
+    try:
+        meta = get_json(url, ua="Mozilla/5.0")["chart"]["result"][0]["meta"]
+    except RuntimeError as e:
+        if "HTTP 404" in str(e):  # ticker not listed yet
+            return None
+        raise
     name = (meta.get("longName") or meta.get("shortName") or "").lower()
     if "anthropic" in name and meta.get("regularMarketPrice"):
         return {
@@ -94,7 +103,7 @@ def main():
         seen = set(json.load(open(args.state)))
     first_run = not seen
 
-    events = []
+    events, edgar_ok = [], True
     try:
         cik = find_cik()
         if cik:
@@ -102,7 +111,8 @@ def main():
         else:
             print("warning: Anthropic not found on EDGAR yet", file=sys.stderr)
     except Exception as e:
-        print(f"warning: EDGAR check failed: {e}", file=sys.stderr)
+        print(f"error: EDGAR check failed: {e}", file=sys.stderr)
+        edgar_ok = False
     try:
         if ev := trading_event():
             events.append(ev)
@@ -122,6 +132,9 @@ def main():
 
     with open(args.state, "w") as f:
         json.dump(sorted(seen), f, indent=1)
+    # Fail the run so a broken EDGAR check is noticed instead of going quiet.
+    if not edgar_ok:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
