@@ -5,6 +5,11 @@ on:
     # Every 15 minutes, 13:00-21:59 UTC on weekdays (covers US market hours).
     - cron: "*/15 13-21 * * 1-5"
   workflow_dispatch:
+    inputs:
+      test:
+        description: "Send a test alert to check notifications arrive"
+        type: boolean
+        default: false
   push:
     paths:
       - scripts/price_alert.py
@@ -30,6 +35,9 @@ jobs:
       # One line per alert: ticker, level, note.
       - name: Check prices
         run: |
+          if [ "${{ inputs.test }}" = "true" ]; then
+            echo '{"title": "TEST price alert: notifications are working", "body": "This is a test. No price level was hit."}' >> events.jsonl
+          fi
           python scripts/price_alert.py SPCX 108 --state .price-state.json \
             --note "20% below the \$135 IPO price." >> events.jsonl
 
