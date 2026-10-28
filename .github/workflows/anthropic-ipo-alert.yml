@@ -47,3 +47,13 @@ jobs:
             gh issue create --title "$title" --label ipo-alert \
               --assignee "${{ github.repository_owner }}" --body "$url"
           done < events.jsonl
+
+      - name: Email alerts
+        if: ${{ !cancelled() }}
+        env:
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        run: python scripts/send_email.py events.jsonl

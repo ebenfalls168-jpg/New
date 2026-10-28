@@ -48,3 +48,13 @@ jobs:
               curl -sS -H "Title: Price alert" -H "Priority: high" -d "$title" "https://ntfy.sh/$NTFY_TOPIC" >/dev/null
             fi
           done < events.jsonl
+
+      - name: Email alerts
+        if: ${{ !cancelled() }}
+        env:
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        run: python scripts/send_email.py events.jsonl

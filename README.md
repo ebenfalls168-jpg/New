@@ -27,3 +27,12 @@ GitHub issue (plus an ntfy push if `NTFY_TOPIC` is set) when a stock's day low r
 It fires once per crossing and re-arms after the price recovers 5% above the level.
 Current alert: SPCX at $108 (20% below the $135 IPO price). Add more by adding lines to
 the "Check prices" step.
+
+## Email alerts to another address
+Both alert workflows also email each alert when these repository secrets are set
+(Settings → Secrets and variables → Actions):
+
+- `ALERT_EMAIL`: where to send alerts
+- `SMTP_USERNAME` / `SMTP_PASSWORD`: the sending account. For Gmail, use the full address and an
+  [app password](https://myaccount.google.com/apppasswords) (needs 2-step verification).
+- `SMTP_SERVER` / `SMTP_PORT`: only for providers other than Gmail (default `smtp.gmail.com`, 465)
