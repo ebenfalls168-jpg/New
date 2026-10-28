@@ -1,0 +1,44 @@
+name: Anthropic IPO alert
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency: ipo-alert
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The state file lists events already alerted on; a cache key per run
+      # plus restore-keys always restores the newest copy.
+      - uses: actions/cache@v4
+        with:
+          path: .ipo-state.json
+          key: ipo-state-${{ github.run_id }}
+          restore-keys: ipo-state-
+
+      - name: Check EDGAR and quotes
+        id: check
+        env:
+          SEC_USER_AGENT: "ipo-alert ${{ github.repository_owner }}@users.noreply.github.com"
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python scripts/anthropic_ipo_alert.py --state .ipo-state.json > events.jsonl
+
+      - name: Open an issue per new event
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create ipo-alert --color D93F0B --force >/dev/null
+          while read -r ev; do
+            title=$(jq -r .title <<<"$ev")
+            url=$(jq -r .url <<<"$ev")
+            gh issue create --title "$title" --label ipo-alert \
+              --assignee "${{ github.repository_owner }}" --body "$url"
+          done < events.jsonl
